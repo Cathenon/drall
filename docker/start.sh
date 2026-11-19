@@ -64,6 +64,24 @@ fi
 # Apply pending migrations
 php artisan migrate --force --no-interaction
 
+# First boot: install without the web installer
+HAS_ADMIN="$(php artisan tinker --execute='echo (Schema::hasTable("admins") && DB::table("admins")->count() > 0) ? "yes" : "no";' 2>/dev/null | tail -n 1 | tr -d '[:space:]')"
+
+if [ "$HAS_ADMIN" != "yes" ]; then
+    [ -f .env ] || cp .env.example .env
+    for key in APP_URL DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD; do
+        value="$(printenv "$key" || true)"
+        if [ -n "$value" ]; then
+            if grep -q "^${key}=" .env; then sed -i "s|^${key}=.*|${key}=${value}|" .env
+            else echo "${key}=${value}" >> .env; fi
+        fi
+    done
+    php artisan bagisto:install --no-interaction --force
+    ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}" ADMIN_PASSWORD="${ADMIN_PASSWORD:-}" \
+    php artisan tinker --execute='if (getenv("ADMIN_PASSWORD")) { DB::table("admins")->update(["email" => getenv("ADMIN_EMAIL"), "password" => bcrypt(getenv("ADMIN_PASSWORD"))]); }'
+fi
+touch storage/installed
+
 # Start Laravel
 echo "Starting Drall on port $PORT"
 
